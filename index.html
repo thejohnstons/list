@@ -81,6 +81,9 @@ main{max-width:1120px;margin:0 auto;padding:18px 20px 60px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .gate{min-height:70vh;display:grid;place-items:center;text-align:center}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(22px + env(safe-area-inset-bottom,0px));background:var(--wine);color:var(--blush);padding:10px 16px;border-radius:999px;font-weight:700;z-index:90;pointer-events:none}
+.arow{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:6px;user-select:none;-webkit-user-select:none;touch-action:pan-y}
+.arow .grip{color:var(--muted);font-size:18px;cursor:grab;touch-action:none} .arow .an{font-weight:600} .arow .aact{display:flex;gap:4px} .arow .pill{padding:4px 9px}
+.arow.lifted{box-shadow:0 10px 24px rgba(74,22,34,.25);position:relative;z-index:5;background:var(--blush)} .arow.drop-here{border-top:3px solid var(--terra)}
 </style></head><body><header class="band"><div class="in"><div><h1 class="logo">Our <span>List</span></h1><p class="tag">Everything we need, in one place.</p></div><a class="back-dash" href="/">← Dashboard</a></div></header>
 <main>
 <div id="gate" class="gate" hidden><div><h1 class="logo" style="justify-content:center;color:var(--wine)">Our <span style="color:var(--terra)">List</span></h1><p class="note">Sign in with your family Google account.</p><button class="btn" id="signin" type="button">Sign in with Google</button><p class="note" id="gatemsg"></p></div></div>

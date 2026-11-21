@@ -37,8 +37,14 @@ const AISLES = [
   ['Pets','🐶',/\b(dog|pet|kibble|treats?)/]
 ];
 const STORAGE = /\b(storage|tubs?|containers?|baskets?|boxes|organis|drawer|shelf|shelves|hooks?|hangers?)\b/i;
-const aisleOf = t => { const s = String(t).toLowerCase(); const a = AISLES.find(x => x[2].test(s)); return a ? a[0] : 'Other'; };
-const aisleIcon = n => (AISLES.find(a => a[0]===n) || ['', '🛒'])[1];
+// A typical Woolworths walk: fresh produce at the door, bakery and deli, the middle aisles, then fridges and frozen.
+const DEFAULT_ORDER = ['Fruit & veg','Bakery','Meat & seafood','Pantry','Snacks','Drinks','Health & beauty','Baby & kids','Pets','Cleaning & household','Dairy & eggs','Frozen','Other'];
+let AISLE_ORDER = DEFAULT_ORDER.slice(), AISLE_MAP = {}, AISLE_ICONS = {};
+const normText = t => String(t||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+const aisleFor = i => AISLE_MAP[normText(i.text)] || i.aisle || 'Other';
+function saveAisles(){ F.put('shop_meta', {id:'aisles', order:AISLE_ORDER, map:AISLE_MAP, icons:AISLE_ICONS}).catch(()=>toast('Couldn’t save the aisles. Check you’re online.')); }
+const aisleOf = t => { if(AISLE_MAP[normText(t)]) return AISLE_MAP[normText(t)]; const s = String(t).toLowerCase(); const a = AISLES.find(x => x[2].test(s)); return a ? a[0] : 'Other'; };
+const aisleIcon = n => AISLE_ICONS[n] || (AISLES.find(a => a[0]===n) || ['', '🛒'])[1];
 
 /* ---------- State ---------- */
 let user = null, shared = [], mine = [], sizes = {}, view = 'home', openList = null, openShop = null, editing = null;
@@ -89,9 +95,13 @@ function clearTicked(items){ items.filter(i=>i.done).forEach(drop); toast('Clear
    ===================================================================== */
 function render(){
   if(!user) return;
+  const ae = document.activeElement, keepId = ae && ae.id && ae.tagName==='INPUT' && !ae.closest('#sheet') ? ae.id : null, sel = keepId ? [ae.selectionStart, ae.selectionEnd, ae.value] : null;
+  renderInner();
+  if(keepId){ const el = document.getElementById(keepId); if(el){ el.value = sel[2]; el.focus({preventScroll:true}); try{ el.setSelectionRange(sel[0], sel[1]); }catch(e){} } }
+}
+function renderInner(){
   ['home','list','shop','sizes'].forEach(v => $('#v-'+v).hidden = v!==view);
   if(view==='home') renderHome(); else if(view==='list') renderList(); else if(view==='shop') renderShop(); else renderSizes();
-  window.scrollTo(0, view==='home' ? window.scrollY : 0);
 }
 function go(v, extra){ view = v; if(v==='list') openList = extra; if(v==='shop') openShop = extra; render(); window.scrollTo(0,0); history.replaceState(null, '', '#'+v+(extra?'-'+extra:'')); }
 
@@ -132,7 +142,8 @@ function trolley(items){ const d = items.filter(i=>i.done); return d.length ? `<
 function renderList(){
   const l = LISTS.find(x=>x.id===openList) || LISTS[0], items = itemsIn(l.id), open = items.filter(i=>!i.done);
   let body = '';
-  if(l.id==='groceries'){ const ais = [...new Set([...AISLES.map(a=>a[0]),'Other'])]; body = ais.map(a => groupHTML(`${aisleIcon(a)} ${a}`, open.filter(i=>(i.aisle||'Other')===a))).join(''); }
+  if(l.id==='groceries'){ const used = [...new Set(open.map(aisleFor))], ais = [...AISLE_ORDER, ...used.filter(a => !AISLE_ORDER.includes(a))];
+    body = ais.map(a => groupHTML(`${aisleIcon(a)} ${esc(a)}`, open.filter(i=>aisleFor(i)===a))).join(''); }
   else if(l.id==='clothes' || l.id==='kids'){ const ppl = l.id==='kids' ? PEOPLE.filter(p=>['thomas','belle'].includes(p.id)) : PEOPLE;
     body = ppl.map(p => groupHTML(`${p.e} ${p.n}${l.id==='clothes' && sizes[p.id] ? ` <button type="button" class="link" data-sizes="${p.id}">sizes</button>` : ''}`, open.filter(i=>i.person===p.id))).join('') + groupHTML('Everyone', open.filter(i=>!ppl.some(p=>p.id===i.person))); }
   else if(l.id==='gifts'){ const who = [...new Set(open.map(i=>i.forWho||'Someone'))].sort(); body = who.map(w => groupHTML(`🎁 For ${esc(w)}`, open.filter(i=>(i.forWho||'Someone')===w))).join(''); }
@@ -142,12 +153,53 @@ function renderList(){
     ${l.secret ? '<p class="secret">🔒 Only you can see this list. Nathan has his own.</p>' : ''}
     <form class="quick" id="laForm" autocomplete="off"><label class="sr" for="la">Add to ${esc(l.n)}</label><input id="la" placeholder="${l.id==='gifts'?'Gift idea…':'Add an item…'}">${l.id==='clothes'||l.id==='kids' ? `<select id="lp" aria-label="Who for">${(l.id==='kids'?PEOPLE.filter(p=>['thomas','belle'].includes(p.id)):PEOPLE).map(p=>`<option value="${p.id}">${p.e} ${p.n}</option>`).join('')}</select>` : ''}${l.id==='gifts' ? '<input id="lw" placeholder="For…" style="max-width:110px">' : ''}<button class="btn" type="submit">Add</button></form>
     ${l.id==='clothes' ? '<button type="button" class="link" data-go="sizes" style="margin:6px 0 0">👟 Everyone’s sizes</button>' : ''}
+    ${l.id==='groceries' ? '<button type="button" class="link" id="arrangeAisles" style="margin:6px 0 0">↕︎ Arrange and add aisles</button>' : ''}
     ${body ? `<div class="groups">${body}</div>` : '<p class="empty">Nothing here yet. Add the first thing above ✨</p>'}${trolley(items)}`;
   $('#laForm').onsubmit = e => { e.preventDefault(); const v = $('#la').value; if(!v.trim()) return;
     const extra = {list:l.id}; const lp = $('#lp'); if(lp) extra.person = lp.value; const lw = $('#lw'); if(lw && lw.value.trim()) extra.forWho = lw.value.trim();
     if(extra.person && sizes[extra.person] && l.id==='clothes'){ /* size filled in from the item sheet */ }
     addItem(v, extra); $('#la').value=''; $('#la').focus(); };
   const ct = $('#clearT'); if(ct) ct.onclick = () => clearTicked(items);
+  const ar = $('#arrangeAisles'); if(ar) ar.onclick = aislesSheet;
+}
+/* ---------- Arrange aisles: drag (or ↑ ↓) into your store's order, rename, add, remove ---------- */
+function aislesSheet(){
+  const counts = {}; itemsIn('groceries').filter(i=>!i.done).forEach(i => { const a = aisleFor(i); counts[a] = (counts[a]||0)+1; });
+  openSheet('Aisles', `<p class="note" style="margin-top:0">Starts in a typical Woolworths order, but every store differs. Hold and drag ⠿ (or use ↑ ↓) to match your shop. Saved for both of you.</p>
+    <div id="aisleList">${AISLE_ORDER.map((a,i) => `<div class="arow" data-ai="${i}"><span class="grip" aria-hidden="true">⠿</span><span class="an">${aisleIcon(a)} ${esc(a)}${counts[a] ? ` <span class="note">· ${counts[a]}</span>` : ''}</span>
+      <span class="aact"><button type="button" class="pill" data-up="${i}" aria-label="Move ${esc(a)} up" ${i===0?'disabled':''}>↑</button><button type="button" class="pill" data-down="${i}" aria-label="Move ${esc(a)} down" ${i===AISLE_ORDER.length-1?'disabled':''}>↓</button><button type="button" class="pill" data-ren="${i}" aria-label="Rename ${esc(a)}">✏️</button>${a!=='Other' ? `<button type="button" class="pill" data-del="${i}" aria-label="Remove ${esc(a)}">✕</button>` : ''}</span></div>`).join('')}</div>
+    <form id="addAisle" class="quick" style="margin-top:14px" autocomplete="off"><label class="sr" for="newAisle">New aisle</label><input id="newAisle" placeholder="New aisle, e.g. International foods"><button class="btn" type="submit">Add</button></form>
+    <button type="button" class="link" id="resetAisles">Reset to the Woolworths order</button>`, b => {
+    const move = (from, to) => { if(to<0 || to>=AISLE_ORDER.length || from===to) return; const [x] = AISLE_ORDER.splice(from,1); AISLE_ORDER.splice(to,0,x); saveAisles(); aislesSheet(); render(); };
+    b.querySelectorAll('[data-up]').forEach(x => x.onclick = () => move(+x.dataset.up, +x.dataset.up-1));
+    b.querySelectorAll('[data-down]').forEach(x => x.onclick = () => move(+x.dataset.down, +x.dataset.down+1));
+    b.querySelectorAll('[data-ren]').forEach(x => x.onclick = () => { const i = +x.dataset.ren, old = AISLE_ORDER[i], nw = (prompt('Rename this aisle', old)||'').trim();
+      if(!nw || nw===old || AISLE_ORDER.includes(nw)) return; AISLE_ORDER[i] = nw; if(AISLE_ICONS[old]) { AISLE_ICONS[nw] = AISLE_ICONS[old]; delete AISLE_ICONS[old]; } else AISLE_ICONS[nw] = aisleIcon(old);
+      Object.keys(AISLE_MAP).forEach(k => { if(AISLE_MAP[k]===old) AISLE_MAP[k] = nw; });
+      itemsIn('groceries').filter(it => it.aisle===old).forEach(it => save({...it, aisle:nw})); saveAisles(); aislesSheet(); render(); });
+    b.querySelectorAll('[data-del]').forEach(x => x.onclick = () => { const i = +x.dataset.del, a = AISLE_ORDER[i]; if(!confirm(`Remove “${a}”? Its items move to Other.`)) return;
+      AISLE_ORDER.splice(i,1); Object.keys(AISLE_MAP).forEach(k => { if(AISLE_MAP[k]===a) delete AISLE_MAP[k]; }); itemsIn('groceries').filter(it => it.aisle===a).forEach(it => save({...it, aisle:'Other'})); saveAisles(); aislesSheet(); render(); });
+    b.querySelector('#addAisle').onsubmit = e => { e.preventDefault(); const n = b.querySelector('#newAisle').value.trim(); if(!n || AISLE_ORDER.includes(n)) return;
+      AISLE_ORDER.splice(Math.max(0, AISLE_ORDER.indexOf('Other')), 0, n); AISLE_ICONS[n] = '🛒'; saveAisles(); aislesSheet(); render(); setTimeout(() => { const f = $('#newAisle'); if(f) f.focus(); }, 30); };
+    b.querySelector('#resetAisles').onclick = () => { if(!confirm('Put the aisles back in the Woolworths order? (Your own aisles stay, just before Other.)')) return;
+      const extra = AISLE_ORDER.filter(a => !DEFAULT_ORDER.includes(a)); AISLE_ORDER = [...DEFAULT_ORDER.slice(0,-1), ...extra, 'Other']; saveAisles(); aislesSheet(); render(); };
+    // hold and drag the ⠿ rows (touch or mouse)
+    const rows = [...b.querySelectorAll('.arow')];
+    rows.forEach(row => {
+      let timer = null, dragging = false, sy = 0, ghostY = 0; const from = +row.dataset.ai;
+      const targetIndex = y => { let idx = rows.length - 1; for(let k=0; k<rows.length; k++){ const r = rows[k].getBoundingClientRect(); if(y < r.top + r.height/2){ idx = k; break; } } return idx > from ? idx - (y > rows[rows.length-1].getBoundingClientRect().bottom ? 0 : 1) : idx; };
+      const lift = () => { dragging = true; row.classList.add('lifted'); if(navigator.vibrate) navigator.vibrate(25); };
+      const follow = y => { row.style.transform = `translateY(${y - sy}px)`; const t = targetIndex(y); rows.forEach((r,k) => r.classList.toggle('drop-here', k===t && k!==from)); ghostY = y; };
+      const drop = () => { row.classList.remove('lifted'); row.style.transform = ''; rows.forEach(r => r.classList.remove('drop-here')); dragging = false; move(from, targetIndex(ghostY)); };
+      const grip = row.querySelector('.grip');
+      [row, grip].forEach(el => el.addEventListener('touchstart', e => { if(e.target.closest('button')) return; sy = ghostY = e.touches[0].clientY; timer = setTimeout(lift, el===grip ? 60 : 280); }, {passive:true}));
+      row.addEventListener('touchmove', e => { if(dragging){ e.preventDefault(); follow(e.touches[0].clientY); } else if(Math.abs(e.touches[0].clientY - sy) > 8) clearTimeout(timer); }, {passive:false});
+      row.addEventListener('touchend', () => { clearTimeout(timer); if(dragging) drop(); });
+      row.addEventListener('mousedown', e => { if(e.target.closest('button')) return; sy = ghostY = e.clientY; timer = setTimeout(lift, 200);
+        const mm = ev => { if(dragging){ ev.preventDefault(); follow(ev.clientY); } }; const mu = () => { clearTimeout(timer); document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); if(dragging) drop(); };
+        document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu); });
+    });
+  });
 }
 function forShop(s){
   return all().filter(i => i.list!=='gifts' || i._secret).filter(i => (i.shops||[]).includes(s) || (SUPERMARKETS.includes(s) && i.list==='groceries' && !(i.shops||[]).length));
@@ -177,7 +229,7 @@ function editSheet(id){
   openSheet('Edit item', `<label class="l" for="e-t">Item</label><input class="f" id="e-t" value="${esc(it.text)}">
     <div class="g2"><div><label class="l" for="e-q">How many</label><input class="f" id="e-q" value="${esc(it.qty||'')}" placeholder="e.g. 2"></div>
       <div><label class="l" for="e-l">List</label><select class="f" id="e-l">${LISTS.map(x=>`<option value="${x.id}" ${x.id===it.list?'selected':''}>${x.e} ${esc(x.n)}</option>`).join('')}</select></div></div>
-    ${it.list==='groceries' ? `<label class="l" for="e-a">Aisle</label><select class="f" id="e-a">${[...AISLES.map(a=>a[0]),'Other'].map(a=>`<option ${a===(it.aisle||'Other')?'selected':''}>${a}</option>`).join('')}</select>` : ''}
+    ${it.list==='groceries' ? `<label class="l" for="e-a">Aisle</label><select class="f" id="e-a">${[...new Set([...AISLE_ORDER, aisleFor(it)])].map(a=>`<option ${a===aisleFor(it)?'selected':''}>${esc(a)}</option>`).join('')}<option value="__new">＋ New aisle…</option></select><p class="note" style="margin:4px 0 0">Changing the aisle is remembered for next time.</p>` : ''}
     ${['clothes','kids'].includes(it.list) ? `<div class="g2"><div><label class="l" for="e-p">Who for</label><select class="f" id="e-p"><option value="">Everyone</option>${PEOPLE.map(p=>`<option value="${p.id}" ${p.id===it.person?'selected':''}>${p.e} ${p.n}</option>`).join('')}</select></div><div><label class="l" for="e-s">Size</label><input class="f" id="e-s" value="${esc(it.size || '')}" placeholder="${it.person && sizes[it.person] ? 'e.g. '+esc(Object.entries(sizes[it.person]).filter(([k])=>k!=='at').map(([k,v])=>v).filter(Boolean)[0]||'') : ''}"></div></div>` : ''}
     ${it.list==='gifts' ? `<div class="g2"><div><label class="l" for="e-w">For</label><input class="f" id="e-w" value="${esc(it.forWho||'')}"></div><div><label class="l" for="e-pr">Price ($)</label><input class="f" id="e-pr" inputmode="decimal" value="${esc(it.price||'')}"></div></div>` : ''}
     <label class="l" for="e-k">Link</label><input class="f" id="e-k" type="url" value="${esc(it.link||'')}" placeholder="Paste a link to the exact one">
@@ -187,12 +239,17 @@ function editSheet(id){
     ${l && l.secret ? '<p class="secret" style="margin-top:12px">🔒 Gifts are always secret.</p>' : `<div class="chips" style="margin-top:12px"><button type="button" class="pill" id="e-sec" aria-pressed="${!!it._secret}">🔒 Secret (only me)</button></div>`}
     <div class="g2" style="margin-top:16px"><button class="btn" id="e-save" type="button">Save</button><button class="btn line" id="e-del" type="button">Delete</button></div>`, b => {
     b.querySelectorAll('[data-eshop]').forEach(x => x.onclick = () => x.setAttribute('aria-pressed', String(x.getAttribute('aria-pressed')!=='true')));
+    const aSel = b.querySelector('#e-a'); if(aSel) aSel.onchange = () => { if(aSel.value !== '__new') return; const n = (prompt('Name the new aisle')||'').trim(); if(!n){ aSel.value = aisleFor(it); return; }
+      if(!AISLE_ORDER.includes(n)){ AISLE_ORDER.splice(Math.max(0, AISLE_ORDER.indexOf('Other')), 0, n); AISLE_ICONS[n] = '🛒'; saveAisles(); }
+      const o = document.createElement('option'); o.textContent = n; aSel.insertBefore(o, aSel.querySelector('[value="__new"]')); aSel.value = n; };
     b.querySelectorAll('[data-need]').forEach(x => x.onclick = () => b.querySelectorAll('[data-need]').forEach(y => y.setAttribute('aria-pressed', String(y===x))));
     const sec = b.querySelector('#e-sec'); if(sec) sec.onclick = () => sec.setAttribute('aria-pressed', String(sec.getAttribute('aria-pressed')!=='true'));
     b.querySelector('#e-save').onclick = () => {
       const v = id => { const el = b.querySelector(id); return el ? el.value.trim() : undefined; };
       const list = v('#e-l'), secretNow = LISTS.find(x=>x.id===list && x.secret) ? true : sec ? sec.getAttribute('aria-pressed')==='true' : !!it._secret;
-      const upd = {...it, text:v('#e-t')||it.text, qty:v('#e-q'), list, aisle: list==='groceries' ? (v('#e-a') || aisleOf(v('#e-t')||it.text)) : undefined,
+      const newAisle = list==='groceries' ? (v('#e-a') && v('#e-a')!=='__new' ? v('#e-a') : aisleOf(v('#e-t')||it.text)) : undefined;
+      if(list==='groceries' && newAisle && newAisle !== aisleFor(it)){ AISLE_MAP[normText(v('#e-t')||it.text)] = newAisle; saveAisles(); }   // remember the move
+      const upd = {...it, text:v('#e-t')||it.text, qty:v('#e-q'), list, aisle: newAisle,
         person:v('#e-p'), size:v('#e-s'), forWho:v('#e-w'), price:v('#e-pr'), link:v('#e-k'), note:v('#e-n'),
         shops:[...b.querySelectorAll('[data-eshop][aria-pressed="true"]')].map(x=>x.dataset.eshop), need:(b.querySelector('[data-need][aria-pressed="true"]')||{dataset:{need:'now'}}).dataset.need};
       if(secretNow !== !!it._secret){ drop(it); upd._secret = secretNow; upd.secret = secretNow; }
@@ -247,6 +304,7 @@ function start(){
     let firstLoad = true;
     F.listen('shop_items', rows => { shared = rows; render(); if(firstLoad){ firstLoad = false; addFromLink(); preloadOnce(); } }, () => toast('Couldn’t load the lists. Check you’re signed in.'));
     F.listen('~shop_items', rows => { mine = rows; render(); }, () => {});
+    F.listen('shop_meta', rows => { const a = rows.find(r => r.id==='aisles'); if(a){ AISLE_ORDER = (a.order && a.order.length) ? a.order : DEFAULT_ORDER.slice(); AISLE_MAP = a.map || {}; AISLE_ICONS = a.icons || {}; render(); } }, () => {});
     F.listen('shop_sizes', rows => { sizes = Object.fromEntries(rows.map(r => [r.id, r])); if(view==='sizes') render(); }, () => {});
     const h = location.hash.slice(1); if(h.startsWith('list-')) go('list', h.slice(5)); else if(h.startsWith('shop-')) go('shop', decodeURIComponent(h.slice(5))); else go(h==='sizes'?'sizes':'home');
   });
