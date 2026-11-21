@@ -11,12 +11,12 @@ const local = { get(k,d){ try{ const v = localStorage.getItem('ol-'+k); return v
 
 /* ---------- Lists, people, shops, aisles ---------- */
 const LISTS = [
-  {id:'groceries', n:'Groceries', e:'🥦', pat:'daisy', sub:'Food and cleaning products'},
-  {id:'home', n:'Home', e:'🏠', pat:'check', sub:'Homewares, storage, furniture and decor'},
-  {id:'bunnings', n:'Bunnings & DIY', e:'🔨', pat:'wave', sub:'Hardware, garden and fix-it jobs'},
-  {id:'clothes', n:'Clothes', e:'👕', pat:'stripe', sub:'For each of you, with sizes'},
-  {id:'kids', n:'Kids', e:'🧸', pat:'stars', sub:'Toys, school bits and nappies'},
-  {id:'gifts', n:'Gifts', e:'🎁', pat:'stars2', sub:'Secret: only you can see this', secret:true}
+  {id:'groceries', n:'Groceries', e:'🥦', pat:'apricot', sub:'Food and cleaning products'},
+  {id:'home', n:'Home', e:'🏠', pat:'blush', sub:'Homewares, storage, furniture and decor'},
+  {id:'bunnings', n:'Bunnings & DIY', e:'🔨', pat:'sage', sub:'Hardware, garden and fix-it jobs'},
+  {id:'clothes', n:'Clothes', e:'👕', pat:'peri', sub:'For each of you, with sizes'},
+  {id:'kids', n:'Kids', e:'🧸', pat:'pink', sub:'Toys, school bits and nappies'},
+  {id:'gifts', n:'Gifts', e:'🎁', pat:'wine', sub:'Secret: only you can see this', secret:true}
 ];
 const PEOPLE = [{id:'thea', n:'Thea', e:'🌸'}, {id:'nathan', n:'Nathan', e:'🧢'}, {id:'thomas', n:'Thomas', e:'🦖'}, {id:'belle', n:'Belle', e:'🎀'}];
 const SHOPS = ['Woolworths','Coles','ALDI','Bunnings','Kmart','Target','Big W','IKEA','Chemist','Online'];
@@ -99,18 +99,20 @@ function renderHome(){
   const first = (user.displayName||'').split(' ')[0];
   const now = all().filter(i=>!i.done && i.need==='now' && i.list!=='gifts').length;
   const shopCounts = SHOPS.map(s => [s, forShop(s).filter(i=>!i.done).length]).filter(x=>x[1]);
-  $('#v-home').innerHTML = `
-    <header class="cover"><div><p class="hi">Hey ${esc(first||'there')} 👋</p><h1 class="logo"><span>our</span> list</h1><p class="sub">${now ? `${now} thing${now===1?'':'s'} needed soon` : 'All stocked up ✨'}</p></div></header>
-    <label class="sr" for="qa">Quick add to groceries</label>
-    <form class="quick" id="qaForm" autocomplete="off"><input id="qa" placeholder="Add to groceries… e.g. 2 milk"><button class="btn" type="submit">Add</button></form>
+  $('#v-home').innerHTML = `<div class="home"><div>
+    <p class="hello">Hey ${esc(first||'there')} ✿</p>
+    <p class="sum">${now ? `${now} thing${now===1?'':'s'} to get soon` : 'All stocked up ✨'}</p>
+    <form class="quick" id="qaForm" autocomplete="off"><label class="sr" for="qa">Quick add to groceries</label><input id="qa" placeholder="Add to groceries… e.g. 2 milk"><button class="btn" type="submit">Add</button></form>
     ${staplesHTML()}
     <h2 class="sec">Lists</h2>
     <div class="tiles">${LISTS.map(l => { const items = itemsIn(l.id), left = items.filter(i=>!i.done).length;
-      return `<button type="button" class="tile p-${l.pat}" data-list="${l.id}"><span class="te">${l.e}</span><b>${esc(l.n)}</b><span class="tc">${left ? left+' to get' : 'nothing yet'}</span>${l.secret?'<span class="lock" aria-label="Secret">🔒</span>':''}</button>`; }).join('')}</div>
-    <h2 class="sec">Out and about? Shop by store</h2>
+      return `<button type="button" class="tile c-${l.pat}" data-list="${l.id}"><span class="te">${l.e}</span><span><b>${esc(l.n)}</b><br><span class="tc">${left ? left+' to get' : 'nothing yet'}</span></span>${l.secret?'<span class="lock" aria-label="Secret">🔒</span>':''}</button>`; }).join('')}</div>
+  </div><aside class="side">
+    <div class="panel"><h2 class="sec" style="margin-top:0">Out and about? Shop by store</h2>
     <div class="shops">${SHOPS.map(s => { const n = (shopCounts.find(x=>x[0]===s)||[0,0])[1]; return `<button type="button" class="shopchip ${n?'has':''}" data-shop="${esc(s)}">${esc(s)}${n?` <span>${n}</span>`:''}</button>`; }).join('')}</div>
-    <p class="note" style="margin-top:18px">Shared with Nathan, live. 🔒 Secret items and your Gifts list are only on your account.</p>`;
-  $('#qaForm').onsubmit = e => { e.preventDefault(); const v = $('#qa').value; if(!v.trim()) return; addItem(v); $('#qa').value=''; $('#qa').focus(); toast('Added to groceries ✓'); };
+    <p class="note" style="margin:14px 0 0">Shared with Nathan, live. 🔒 Secret items and your Gifts list are only on your account.</p></div>
+  </aside></div>`;
+  $('#qaForm').onsubmit = e => { e.preventDefault(); const v = $('#qa').value; if(!v.trim()) return; addItem(v); $('#qa').value=''; $('#qa').focus(); toast('Added ✓'); };
 }
 function staplesHTML(){
   const st = Object.entries(local.get('staples', {})).sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
@@ -124,7 +126,7 @@ function itemRow(i, opts={}){
     <button type="button" class="it" data-edit="${i.id}"><b>${esc(i.text)}${i._secret?' <span aria-label="Secret">🔒</span>':''}</b>${meta?`<span>${meta}</span>`:''}${i.note?`<span class="nt">${esc(i.note)}</span>`:''}</button>
     ${i.link ? `<a class="lk" href="${esc(i.link)}" target="_blank" rel="noopener" aria-label="Open link for ${esc(i.text)}">🔗</a>` : ''}</div>`;
 }
-function groupHTML(title, items, opts){ return items.length ? `<h3 class="grp">${title}</h3><div class="card">${items.map(i=>itemRow(i, opts)).join('')}</div>` : ''; }
+function groupHTML(title, items, opts){ return items.length ? `<div class="grp-wrap"><h3 class="grp">${title}</h3><div class="card">${items.map(i=>itemRow(i, opts)).join('')}</div></div>` : ''; }
 function trolley(items){ const d = items.filter(i=>i.done); return d.length ? `<h3 class="grp">In the trolley 🛒 <button type="button" class="link" id="clearT">Clear ${d.length}</button></h3><div class="card dim">${d.map(i=>itemRow(i)).join('')}</div>` : ''; }
 
 function renderList(){
@@ -136,11 +138,11 @@ function renderList(){
   else if(l.id==='gifts'){ const who = [...new Set(open.map(i=>i.forWho||'Someone'))].sort(); body = who.map(w => groupHTML(`🎁 For ${esc(w)}`, open.filter(i=>(i.forWho||'Someone')===w))).join(''); }
   else body = groupHTML('Need now', open.filter(i=>i.need!=='sometime')) + groupHTML('Sometime', open.filter(i=>i.need==='sometime'));
   $('#v-list').innerHTML = `<div class="bar"><button type="button" class="back" data-go="home">← Lists</button></div>
-    <header class="lhead p-${l.pat}"><span class="te">${l.e}</span><div><h1>${esc(l.n)}</h1><p>${esc(l.sub)}</p></div></header>
+    <header class="lhead c-${l.pat}"><span class="te">${l.e}</span><div><h1>${esc(l.n)}</h1><p>${esc(l.sub)}</p></div></header>
     ${l.secret ? '<p class="secret">🔒 Only you can see this list. Nathan has his own.</p>' : ''}
     <form class="quick" id="laForm" autocomplete="off"><label class="sr" for="la">Add to ${esc(l.n)}</label><input id="la" placeholder="${l.id==='gifts'?'Gift idea…':'Add an item…'}">${l.id==='clothes'||l.id==='kids' ? `<select id="lp" aria-label="Who for">${(l.id==='kids'?PEOPLE.filter(p=>['thomas','belle'].includes(p.id)):PEOPLE).map(p=>`<option value="${p.id}">${p.e} ${p.n}</option>`).join('')}</select>` : ''}${l.id==='gifts' ? '<input id="lw" placeholder="For…" style="max-width:110px">' : ''}<button class="btn" type="submit">Add</button></form>
     ${l.id==='clothes' ? '<button type="button" class="link" data-go="sizes" style="margin:6px 0 0">👟 Everyone’s sizes</button>' : ''}
-    ${body || '<p class="empty">Nothing here yet. Add the first thing above ✨</p>'}${trolley(items)}`;
+    ${body ? `<div class="groups">${body}</div>` : '<p class="empty">Nothing here yet. Add the first thing above ✨</p>'}${trolley(items)}`;
   $('#laForm').onsubmit = e => { e.preventDefault(); const v = $('#la').value; if(!v.trim()) return;
     const extra = {list:l.id}; const lp = $('#lp'); if(lp) extra.person = lp.value; const lw = $('#lw'); if(lw && lw.value.trim()) extra.forWho = lw.value.trim();
     if(extra.person && sizes[extra.person] && l.id==='clothes'){ /* size filled in from the item sheet */ }
@@ -154,14 +156,14 @@ function renderShop(){
   const s = openShop, items = forShop(s), open = items.filter(i=>!i.done);
   const byList = LISTS.map(l => groupHTML(`${l.e} ${l.n}`, open.filter(i=>i.list===l.id), {hideShops:true})).join('');
   $('#v-shop').innerHTML = `<div class="bar"><button type="button" class="back" data-go="home">← Lists</button></div>
-    <header class="lhead p-stars"><span class="te">🏪</span><div><h1>${esc(s)}</h1><p>Everything to grab here, from every list</p></div></header>
+    <header class="lhead c-pink"><span class="te">🏪</span><div><h1>${esc(s)}</h1><p>Everything to grab here, from every list</p></div></header>
     ${SUPERMARKETS.includes(s) ? '<p class="note">Includes all groceries that aren’t tagged for a particular shop.</p>' : ''}
-    ${byList || '<p class="empty">Nothing tagged for this shop yet.</p>'}${trolley(items)}`;
+    ${byList ? `<div class="groups">${byList}</div>` : '<p class="empty">Nothing tagged for this shop yet.</p>'}${trolley(items)}`;
   const ct = $('#clearT'); if(ct) ct.onclick = () => clearTicked(items);
 }
 function renderSizes(){
   $('#v-sizes').innerHTML = `<div class="bar"><button type="button" class="back" data-list="clothes">← Clothes</button></div>
-    <header class="lhead p-stripe"><span class="te">👟</span><div><h1>Sizes</h1><p>Never guess in the shop again</p></div></header>
+    <header class="lhead c-peri"><span class="te">👟</span><div><h1>Sizes</h1><p>Never guess in the shop again</p></div></header>
     ${PEOPLE.map(p => `<div class="card" style="margin-top:12px"><b>${p.e} ${p.n}</b><div class="sizes">${SIZE_KEYS.map(k => `<label><span>${k}</span><input data-size="${p.id}|${k}" value="${esc((sizes[p.id]||{})[k]||'')}" placeholder="–"></label>`).join('')}</div>${sizes[p.id] && sizes[p.id].at ? `<p class="note">Updated ${new Date(sizes[p.id].at).toLocaleDateString('en-AU')}</p>` : ''}</div>`).join('')}
     <p class="note" style="margin-top:10px">Kids grow fast, so check these each season.</p>`;
   document.querySelectorAll('[data-size]').forEach(inp => inp.onchange = () => { const [pid, k] = inp.dataset.size.split('|'); const cur = {...(sizes[pid]||{}), [k]: inp.value.trim(), at:Date.now()};
@@ -219,6 +221,23 @@ function addFromLink(){
   const q = new URLSearchParams(location.search), add = q.get('add');
   if(add){ add.split(/,|\band\b/).map(s=>s.trim()).filter(Boolean).forEach(x => addItem(x, {list:q.get('list')||'groceries'})); toast('Added from Siri ✓'); history.replaceState(null,'',location.pathname); }
 }
+/* Items Thea listed in the Household chat (Nov 2026), added once on first open. */
+const PRELOAD = [
+  ['T-shirts','clothes',{person:'thea'}],['Body suits','clothes',{person:'thea'}],['Gym towel','clothes',{person:'thea'}],['Training shoes','clothes',{person:'thea'}],['Under skirt','clothes',{person:'thea'}],
+  ['Bathers','clothes',{person:'thomas'}],['Bathers','clothes',{person:'belle'}],['Rain jacket','clothes',{shops:['Kmart']}],
+  ['Hue light bulb','bunnings',{shops:['Bunnings']}],
+  ['Tea towels (for presents)','home',{shops:['Kmart']}],['Party supplies box','home',{shops:['Kmart']}],['Craft box','home',{shops:['Kmart']}],
+  ['Studymate book cover roll, 1 m × 450 mm, white','kids',{shops:['Kmart'], link:'https://www.kmart.com.au/product/studymate-book-cover-roll-1mx450mm-white-110039867/'}],
+  ['Hooks for Thomas’s wall and Belle','home',{shops:['Kmart']}],['Silicone muffin trays','home',{shops:['Kmart']}],['Bread zip-lock bags','home',{shops:['Kmart']}],
+  ['Gas mask','home',{}],['Dishwasher cap replacements','home',{}],['Blue light glasses','home',{}],
+  ['Spot cleaner refill','groceries',{aisle:'Cleaning & household'}],['Cleaning cloths','groceries',{aisle:'Cleaning & household'}]
+];
+async function preloadOnce(){
+  try{ const done = await F.getOne('shop_meta', 'preload-nov-2026'); if(done) return;
+    await F.put('shop_meta', {id:'preload-nov-2026', at:Date.now()});
+    for(const [i, [text, list, extra]] of PRELOAD.entries()) await F.put('shop_items', {id:'pre-'+i, text, qty:'', list, done:false, need:'now', at:Date.now(), by:'Thea', ...extra});
+  }catch(e){ /* try again next time */ }
+}
 function start(){
   $('#signin').onclick = () => F.signIn().catch(() => $('#gatemsg').textContent = 'Sign-in didn’t work. Please try again.');
   F.watchUser(u => {
@@ -226,7 +245,7 @@ function start(){
     if(!u){ $('#gate').hidden = false; ['home','list','shop','sizes'].forEach(v => $('#v-'+v).hidden = true); return; }
     $('#gate').hidden = true; F.setOwner && F.setOwner(u.email);
     let firstLoad = true;
-    F.listen('shop_items', rows => { shared = rows; render(); if(firstLoad){ firstLoad = false; addFromLink(); } }, () => toast('Couldn’t load the lists. Check you’re signed in.'));
+    F.listen('shop_items', rows => { shared = rows; render(); if(firstLoad){ firstLoad = false; addFromLink(); preloadOnce(); } }, () => toast('Couldn’t load the lists. Check you’re signed in.'));
     F.listen('~shop_items', rows => { mine = rows; render(); }, () => {});
     F.listen('shop_sizes', rows => { sizes = Object.fromEntries(rows.map(r => [r.id, r])); if(view==='sizes') render(); }, () => {});
     const h = location.hash.slice(1); if(h.startsWith('list-')) go('list', h.slice(5)); else if(h.startsWith('shop-')) go('shop', decodeURIComponent(h.slice(5))); else go(h==='sizes'?'sizes':'home');
