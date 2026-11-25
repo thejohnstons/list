@@ -10,7 +10,7 @@ const esc = F.esc;
 const local = { get(k,d){ try{ const v = localStorage.getItem('ol-'+k); return v===null ? d : JSON.parse(v); }catch(e){ return d; } }, set(k,v){ try{ localStorage.setItem('ol-'+k, JSON.stringify(v)); }catch(e){} } };
 
 /* ---------- Lists, people, shops, aisles ---------- */
-const LISTS = [
+const BASE_LISTS = [
   {id:'groceries', n:'Groceries', e:'🥦', pat:'apricot', sub:'Food and cleaning products'},
   {id:'home', n:'Home', e:'🏠', pat:'blush', sub:'Homewares, storage, furniture and decor'},
   {id:'bunnings', n:'Bunnings & DIY', e:'🔨', pat:'sage', sub:'Hardware, garden and fix-it jobs'},
@@ -18,6 +18,10 @@ const LISTS = [
   {id:'kids', n:'Kids', e:'🧸', pat:'pink', sub:'Toys, school bits and nappies'},
   {id:'gifts', n:'Gifts', e:'🎁', pat:'wine', sub:'Secret: only you can see this', secret:true}
 ];
+// Your own lists: shared ones in shop_meta/lists, secret ones in your private ~shop_meta/lists
+let LISTS = BASE_LISTS.slice(), CUSTOM_SHARED = [], CUSTOM_MINE = [];
+const LIST_COLOURS = [['pink','Pink'],['blush','Blush'],['terra','Terracotta'],['apricot','Apricot'],['butter','Butter'],['sage','Sage'],['peri','Periwinkle'],['wine','Wine']];
+function rebuildLists(){ LISTS.length = 0; LISTS.push(...BASE_LISTS, ...CUSTOM_SHARED.map(l => ({...l, custom:true})), ...CUSTOM_MINE.map(l => ({...l, custom:true, secret:true}))); }
 const PEOPLE = [{id:'thea', n:'Thea', e:'🌸'}, {id:'nathan', n:'Nathan', e:'🧢'}, {id:'thomas', n:'Thomas', e:'🦖'}, {id:'belle', n:'Belle', e:'🎀'}];
 const SHOPS = ['Woolworths','Coles','ALDI','Bunnings','Kmart','Target','Big W','IKEA','Chemist','Online'];
 const SUPERMARKETS = ['Woolworths','Coles','ALDI'];
@@ -79,7 +83,7 @@ function addItem(text, extraIn={}){ let extra = {...extraIn};
   if(list==='groceries' && STORAGE.test(t)){ list = 'home'; extra = {...extra, list}; setTimeout(()=>toast('That sounds like storage, so it’s gone to Home 🏠'), 50); }
   const it = {id:F.uid('s'), text:t, qty, list, done:false, need:'now', at:Date.now(), by:(user && user.displayName || '').split(' ')[0], ...extra};
   if(list==='groceries' && !it.aisle) it.aisle = aisleOf(t);
-  if(LISTS.find(l=>l.id===list && l.secret)) it.secret = true;
+  if(LISTS.find(l=>l.id===list && l.secret)) it.secret = true;   // gifts and your own secret lists
   if(it.secret){ it._secret = true; mine.push(it); } else shared.push(it);
   save(it); render();
   // remember for staples
@@ -116,12 +120,14 @@ function renderHome(){
     ${staplesHTML()}
     <h2 class="sec">Lists</h2>
     <div class="tiles">${LISTS.map(l => { const items = itemsIn(l.id), left = items.filter(i=>!i.done).length;
-      return `<button type="button" class="tile c-${l.pat}" data-list="${l.id}"><span class="te">${l.e}</span><span><b>${esc(l.n)}</b><br><span class="tc">${left ? left+' to get' : 'nothing yet'}</span></span>${l.secret?'<span class="lock" aria-label="Secret">🔒</span>':''}</button>`; }).join('')}</div>
+      return `<button type="button" class="tile c-${l.pat}" data-list="${l.id}"><span class="te">${l.e}</span><span><b>${esc(l.n)}</b><br><span class="tc">${left ? left+(l.custom && !l.shop ? ' to do' : ' to get') : 'nothing yet'}</span></span>${l.secret?'<span class="lock" aria-label="Secret">🔒</span>':''}</button>`; }).join('')}
+      <button type="button" class="tile tile-new" id="newList"><span class="te">＋</span><span><b>New list</b><br><span class="tc">make your own</span></span></button></div>
   </div><aside class="side">
     <div class="panel"><h2 class="sec" style="margin-top:0">Out and about? Shop by store</h2>
     <div class="shops">${SHOPS.map(s => { const n = (shopCounts.find(x=>x[0]===s)||[0,0])[1]; return `<button type="button" class="shopchip ${n?'has':''}" data-shop="${esc(s)}">${esc(s)}${n?` <span>${n}</span>`:''}</button>`; }).join('')}</div>
     <p class="note" style="margin:14px 0 0">Shared with Nathan, live. 🔒 Secret items and your Gifts list are only on your account.</p></div>
   </aside></div>`;
+  $('#newList').onclick = () => listSheet(null);
   $('#qaForm').onsubmit = e => { e.preventDefault(); const v = $('#qa').value; if(!v.trim()) return; addItem(v); $('#qa').value=''; $('#qa').focus(); toast('Added ✓'); };
 }
 function staplesHTML(){
@@ -131,9 +137,10 @@ function staplesHTML(){
   return pick.length ? `<div class="staples" aria-label="Your staples"><span class="note">Staples:</span>${pick.map(t=>`<button type="button" class="pill" data-staple="${esc(t)}">＋ ${esc(t)}</button>`).join('')}</div>` : '';
 }
 function itemRow(i, opts={}){
+  const today = new Date().toISOString().slice(0,10), dueTxt = i.due ? `<span style="color:${i.due < today && !i.done ? '#C0392B' : 'inherit'}">${i.due < today && !i.done ? 'overdue · ' : 'due '}${new Date(i.due+'T00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})}</span>` : '';
   const meta = [i.qty ? `×${esc(i.qty)}` : '', opts.showList ? esc((LISTS.find(l=>l.id===i.list)||{n:''}).n) : '', i.person ? esc((PEOPLE.find(p=>p.id===i.person)||{n:i.person}).n) : '', i.forWho ? 'for '+esc(i.forWho) : '', i.size ? 'size '+esc(i.size) : '', i.price ? '$'+esc(i.price) : '', i.need==='sometime' ? 'sometime' : '', (i.shops||[]).length && !opts.hideShops ? esc(i.shops.join(', ')) : ''].filter(Boolean).join(' · ');
   return `<div class="row-i ${i.done?'done':''}"><button type="button" class="tick" data-tick="${i.id}" aria-pressed="${!!i.done}" aria-label="${i.done?'Untick':'Tick'} ${esc(i.text)}">${i.done?'✓':''}</button>
-    <button type="button" class="it" data-edit="${i.id}"><b>${esc(i.text)}${i._secret?' <span aria-label="Secret">🔒</span>':''}</b>${meta?`<span>${meta}</span>`:''}${i.note?`<span class="nt">${esc(i.note)}</span>`:''}</button>
+    <button type="button" class="it" data-edit="${i.id}"><b>${esc(i.text)}${i._secret?' <span aria-label="Secret">🔒</span>':''}</b>${meta?`<span>${meta}</span>`:''}${i.note?`<span class="nt" style="white-space:pre-line">${esc(i.note)}</span>`:''}${dueTxt?`<span>${dueTxt}</span>`:''}</button>
     ${i.link ? `<a class="lk" href="${esc(i.link)}" target="_blank" rel="noopener" aria-label="Open link for ${esc(i.text)}">🔗</a>` : ''}</div>`;
 }
 function groupHTML(title, items, opts){ return items.length ? `<div class="grp-wrap"><h3 class="grp">${title}</h3><div class="card">${items.map(i=>itemRow(i, opts)).join('')}</div></div>` : ''; }
@@ -150,10 +157,11 @@ function renderList(){
   else body = groupHTML('Need now', open.filter(i=>i.need!=='sometime')) + groupHTML('Sometime', open.filter(i=>i.need==='sometime'));
   $('#v-list').innerHTML = `<div class="bar"><button type="button" class="back" data-go="home">← Lists</button></div>
     <header class="lhead c-${l.pat}"><span class="te">${l.e}</span><div><h1>${esc(l.n)}</h1><p>${esc(l.sub)}</p></div></header>
-    ${l.secret ? '<p class="secret">🔒 Only you can see this list. Nathan has his own.</p>' : ''}
+    ${l.secret ? `<p class="secret">🔒 Only you can see this list.${l.id==='gifts' ? ' Nathan has his own.' : ''}</p>` : ''}
+    ${l.custom ? `<button type="button" class="link" id="editList" style="margin:8px 0 0">✏️ Edit list</button>` : ''}
     <form class="quick" id="laForm" autocomplete="off"><label class="sr" for="la">Add to ${esc(l.n)}</label><input id="la" placeholder="${l.id==='gifts'?'Gift idea…':'Add an item…'}">${l.id==='clothes'||l.id==='kids' ? `<select id="lp" aria-label="Who for">${(l.id==='kids'?PEOPLE.filter(p=>['thomas','belle'].includes(p.id)):PEOPLE).map(p=>`<option value="${p.id}">${p.e} ${p.n}</option>`).join('')}</select>` : ''}${l.id==='gifts' ? '<input id="lw" placeholder="For…" style="max-width:110px">' : ''}<button class="btn" type="submit">Add</button></form>
     ${l.id==='clothes' ? '<button type="button" class="link" data-go="sizes" style="margin:6px 0 0">👟 Everyone’s sizes</button>' : ''}
-    ${l.id==='groceries' ? '<button type="button" class="link" id="arrangeAisles" style="margin:6px 0 0">↕︎ Arrange and add aisles</button>' : ''}
+    ${l.id==='groceries' ? '<div style="display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 0"><button type="button" class="link" id="arrangeAisles">↕︎ Arrange and add aisles</button><a class="link" href="/mealplanner/#shop" style="text-decoration:none">🍽️ Meal planner list ›</a></div>' : ''}
     ${body ? `<div class="groups">${body}</div>` : '<p class="empty">Nothing here yet. Add the first thing above ✨</p>'}${trolley(items)}`;
   $('#laForm').onsubmit = e => { e.preventDefault(); const v = $('#la').value; if(!v.trim()) return;
     const extra = {list:l.id}; const lp = $('#lp'); if(lp) extra.person = lp.value; const lw = $('#lw'); if(lw && lw.value.trim()) extra.forWho = lw.value.trim();
@@ -161,6 +169,36 @@ function renderList(){
     addItem(v, extra); $('#la').value=''; $('#la').focus(); };
   const ct = $('#clearT'); if(ct) ct.onclick = () => clearTicked(items);
   const ar = $('#arrangeAisles'); if(ar) ar.onclick = aislesSheet;
+  const el = $('#editList'); if(el) el.onclick = () => listSheet(l.id);
+}
+/* ---------- Your own lists ---------- */
+function listSheet(id){
+  const l = id ? LISTS.find(x => x.id===id) : {n:'', e:'📝', pat:'blush', secret:false};
+  openSheet(id ? 'Edit list' : 'New list', `<label class="l" for="ln">Name</label><input class="f" id="ln" value="${esc(l.n)}" placeholder="e.g. Honey Do List, Christmas, Camping">
+    <div class="g2"><div><label class="l" for="le">Emoji</label><input class="f" id="le" value="${esc(l.e)}" maxlength="4"></div>
+    <div><label class="l" for="ls">Short description</label><input class="f" id="ls" value="${esc(l.sub||'')}" placeholder="optional"></div></div>
+    <p class="l">Colour</p><div class="chips">${LIST_COLOURS.map(([k,n]) => `<button type="button" class="pill c-${k}" data-lc="${k}" aria-pressed="${l.pat===k}" aria-label="${n}" style="min-width:44px">${l.pat===k?'✓':'&nbsp;'}</button>`).join('')}</div>
+    ${id ? `<p class="note" style="margin-top:12px">${l.secret ? '🔒 Secret: only you can see this list.' : '👫 Shared with Nathan.'}</p>` : `<div class="chips" style="margin-top:12px"><button type="button" class="pill" data-ls="shared" aria-pressed="true">👫 Shared with Nathan</button><button type="button" class="pill" data-ls="secret" aria-pressed="false">🔒 Only me</button></div>`}
+    <div class="g2" style="margin-top:16px"><button class="btn" id="lsave" type="button">${id ? 'Save' : 'Create list'}</button>${id ? '<button class="btn line" id="ldel" type="button">Delete list</button>' : ''}</div>`, b => {
+    let pat = l.pat, secret = !!l.secret;
+    b.querySelectorAll('[data-lc]').forEach(x => x.onclick = () => { pat = x.dataset.lc; b.querySelectorAll('[data-lc]').forEach(y => { y.setAttribute('aria-pressed', String(y===x)); y.innerHTML = y===x ? '✓' : '&nbsp;'; }); });
+    b.querySelectorAll('[data-ls]').forEach(x => x.onclick = () => { secret = x.dataset.ls==='secret'; b.querySelectorAll('[data-ls]').forEach(y => y.setAttribute('aria-pressed', String(y===x))); });
+    b.querySelector('#lsave').onclick = async () => {
+      const n = b.querySelector('#ln').value.trim(); if(!n){ toast('Give the list a name first.'); return; }
+      const def = {id: id || ('L' + Date.now().toString(36)), n, e: b.querySelector('#le').value.trim() || '📝', sub: b.querySelector('#ls').value.trim() || (secret ? 'Only you can see this' : 'Shared with Nathan'), pat};
+      const arr = (id ? l.secret : secret) ? CUSTOM_MINE : CUSTOM_SHARED, i = arr.findIndex(x => x.id===def.id);
+      if(i >= 0) arr[i] = def; else arr.push(def);
+      rebuildLists(); render();
+      try{ await F.put((id ? l.secret : secret) ? '~shop_meta' : 'shop_meta', {id:'lists', custom:arr}); }catch(e){ toast('Couldn’t save the list. Check you’re online.'); }
+      closeSheet(); if(!id) go('list', def.id); toast(id ? 'Saved ✓' : `${n} created ✓`);
+    };
+    const del = b.querySelector('#ldel'); if(del) del.onclick = async () => {
+      const items = itemsIn(id); if(!confirm(`Delete “${l.n}”${items.length ? ` and its ${items.length} item${items.length===1?'':'s'}` : ''}?`)) return;
+      items.forEach(drop); const arr = l.secret ? CUSTOM_MINE : CUSTOM_SHARED, i = arr.findIndex(x => x.id===id); if(i >= 0) arr.splice(i, 1);
+      rebuildLists(); try{ await F.put(l.secret ? '~shop_meta' : 'shop_meta', {id:'lists', custom:arr}); if(id==='honeydo') await F.put('shop_meta', {id:'preload-honeydo', at:Date.now(), deleted:true}); }catch(e){}
+      closeSheet(); go('home'); toast('List deleted');
+    };
+  });
 }
 /* ---------- Arrange aisles: drag (or ↑ ↓) into your store's order, rename, add, remove ---------- */
 function aislesSheet(){
@@ -232,6 +270,7 @@ function editSheet(id){
     ${it.list==='groceries' ? `<label class="l" for="e-a">Aisle</label><select class="f" id="e-a">${[...new Set([...AISLE_ORDER, aisleFor(it)])].map(a=>`<option ${a===aisleFor(it)?'selected':''}>${esc(a)}</option>`).join('')}<option value="__new">＋ New aisle…</option></select><p class="note" style="margin:4px 0 0">Changing the aisle is remembered for next time.</p>` : ''}
     ${['clothes','kids'].includes(it.list) ? `<div class="g2"><div><label class="l" for="e-p">Who for</label><select class="f" id="e-p"><option value="">Everyone</option>${PEOPLE.map(p=>`<option value="${p.id}" ${p.id===it.person?'selected':''}>${p.e} ${p.n}</option>`).join('')}</select></div><div><label class="l" for="e-s">Size</label><input class="f" id="e-s" value="${esc(it.size || '')}" placeholder="${it.person && sizes[it.person] ? 'e.g. '+esc(Object.entries(sizes[it.person]).filter(([k])=>k!=='at').map(([k,v])=>v).filter(Boolean)[0]||'') : ''}"></div></div>` : ''}
     ${it.list==='gifts' ? `<div class="g2"><div><label class="l" for="e-w">For</label><input class="f" id="e-w" value="${esc(it.forWho||'')}"></div><div><label class="l" for="e-pr">Price ($)</label><input class="f" id="e-pr" inputmode="decimal" value="${esc(it.price||'')}"></div></div>` : ''}
+    ${it.list!=='groceries' ? `<label class="l" for="e-due">Due date (optional)</label><input class="f" id="e-due" type="date" value="${esc(it.due||'')}">` : ''}
     <label class="l" for="e-k">Link</label><input class="f" id="e-k" type="url" value="${esc(it.link||'')}" placeholder="Paste a link to the exact one">
     <label class="l" for="e-n">Notes</label><textarea class="f" id="e-n" rows="2" placeholder="Colour, brand, where you saw it…">${esc(it.note||'')}</textarea>
     <p class="l">Where to buy it</p><div class="chips">${SHOPS.map(s=>`<button type="button" class="pill" data-eshop="${esc(s)}" aria-pressed="${(it.shops||[]).includes(s)}">${esc(s)}</button>`).join('')}</div>
@@ -251,6 +290,7 @@ function editSheet(id){
       if(list==='groceries' && newAisle && newAisle !== aisleFor(it)){ AISLE_MAP[normText(v('#e-t')||it.text)] = newAisle; saveAisles(); }   // remember the move
       const upd = {...it, text:v('#e-t')||it.text, qty:v('#e-q'), list, aisle: newAisle,
         person:v('#e-p'), size:v('#e-s'), forWho:v('#e-w'), price:v('#e-pr'), link:v('#e-k'), note:v('#e-n'),
+        due: v('#e-due') || undefined,
         shops:[...b.querySelectorAll('[data-eshop][aria-pressed="true"]')].map(x=>x.dataset.eshop), need:(b.querySelector('[data-need][aria-pressed="true"]')||{dataset:{need:'now'}}).dataset.need};
       if(secretNow !== !!it._secret){ drop(it); upd._secret = secretNow; upd.secret = secretNow; }
       else { upd._secret = secretNow; upd.secret = secretNow || undefined; }
@@ -289,10 +329,35 @@ const PRELOAD = [
   ['Gas mask','home',{}],['Dishwasher cap replacements','home',{}],['Blue light glasses','home',{}],
   ['Spot cleaner refill','groceries',{aisle:'Cleaning & household'}],['Cleaning cloths','groceries',{aisle:'Cleaning & household'}]
 ];
+/* The Honey Do List (shared): jobs Thea would like Nathan to do around the house. Added once. */
+const HONEYDO = [
+  ['Download the audio of The New Adventures of Winnie the Pooh for the Yoto', {note:'The actual audio version'}],
+  ['Toilet roll holder', {}],
+  ['Thea’s drawers', {}],
+  ['Anchor furniture to the wall', {note:'– Kids’ kitchen?\n– Cabinet with the amp in it?\n– Thea’s new chest of drawers\n– Tall drawers in Thea’s wardrobe', due:'2026-09-18'}],
+  ['Fix the foam insulation at the front door', {}]
+];
+// Checks every time the app opens: if the Honey Do List (or its first jobs) are missing, they're added.
+// If Thea deletes the list on purpose, that's remembered and it isn't added back.
+async function addHoneyDoOnce(){
+  try{
+    const mark = await F.getOne('shop_meta', 'preload-honeydo');
+    if(mark && mark.deleted) return;
+    const cur = await F.getOne('shop_meta', 'lists'), custom = (cur && cur.custom) || [];
+    const listMissing = !custom.some(l => l.id==='honeydo');
+    if(listMissing){ custom.push({id:'honeydo', n:'Honey Do List', e:'🍯', sub:'Jobs for Nathan around the house', pat:'butter'}); await F.put('shop_meta', {id:'lists', custom}); }
+    if(listMissing || !mark){
+      const have = new Set(shared.map(i => i.id));
+      for(const [i, [text, extra]] of HONEYDO.entries()) if(!have.has('honey-'+i)) await F.put('shop_items', {id:'honey-'+i, text, qty:'', list:'honeydo', done:false, need:'now', at:Date.now(), by:'Thea', ...extra});
+      await F.put('shop_meta', {id:'preload-honeydo', at:Date.now()});   // marked only once everything is saved
+    }
+  }catch(e){ console.warn('[Our List] Honey Do List', e); }
+}
 async function preloadOnce(){
   try{ const done = await F.getOne('shop_meta', 'preload-nov-2026'); if(done) return;
+    const have = new Set(shared.map(i => i.id));
+    for(const [i, [text, list, extra]] of PRELOAD.entries()) if(!have.has('pre-'+i)) await F.put('shop_items', {id:'pre-'+i, text, qty:'', list, done:false, need:'now', at:Date.now(), by:'Thea', ...extra});
     await F.put('shop_meta', {id:'preload-nov-2026', at:Date.now()});
-    for(const [i, [text, list, extra]] of PRELOAD.entries()) await F.put('shop_items', {id:'pre-'+i, text, qty:'', list, done:false, need:'now', at:Date.now(), by:'Thea', ...extra});
   }catch(e){ /* try again next time */ }
 }
 function start(){
@@ -302,9 +367,10 @@ function start(){
     if(!u){ $('#gate').hidden = false; ['home','list','shop','sizes'].forEach(v => $('#v-'+v).hidden = true); return; }
     $('#gate').hidden = true; F.setOwner && F.setOwner(u.email);
     let firstLoad = true;
-    F.listen('shop_items', rows => { shared = rows; render(); if(firstLoad){ firstLoad = false; addFromLink(); preloadOnce(); } }, () => toast('Couldn’t load the lists. Check you’re signed in.'));
+    F.listen('shop_items', rows => { shared = rows; render(); if(firstLoad){ firstLoad = false; addFromLink(); preloadOnce().then(addHoneyDoOnce); } }, () => toast('Couldn’t load the lists. Check you’re signed in.'));
     F.listen('~shop_items', rows => { mine = rows; render(); }, () => {});
-    F.listen('shop_meta', rows => { const a = rows.find(r => r.id==='aisles'); if(a){ AISLE_ORDER = (a.order && a.order.length) ? a.order : DEFAULT_ORDER.slice(); AISLE_MAP = a.map || {}; AISLE_ICONS = a.icons || {}; render(); } }, () => {});
+    F.listen('~shop_meta', rows => { const l = rows.find(r => r.id==='lists'); CUSTOM_MINE = l ? (l.custom||[]) : []; rebuildLists(); render(); }, () => {});
+    F.listen('shop_meta', rows => { const lists = rows.find(r => r.id==='lists'); CUSTOM_SHARED = lists ? (lists.custom||[]) : []; rebuildLists(); render(); const a = rows.find(r => r.id==='aisles'); if(a){ AISLE_ORDER = (a.order && a.order.length) ? a.order : DEFAULT_ORDER.slice(); AISLE_MAP = a.map || {}; AISLE_ICONS = a.icons || {}; render(); } }, () => {});
     F.listen('shop_sizes', rows => { sizes = Object.fromEntries(rows.map(r => [r.id, r])); if(view==='sizes') render(); }, () => {});
     const h = location.hash.slice(1); if(h.startsWith('list-')) go('list', h.slice(5)); else if(h.startsWith('shop-')) go('shop', decodeURIComponent(h.slice(5))); else go(h==='sizes'?'sizes':'home');
   });
